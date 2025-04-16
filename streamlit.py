@@ -7,16 +7,14 @@ st.set_page_config(page_title="Supermarket Sales Dashboard", layout="wide")
 
 # Load Dataset
 @st.cache_data
-
 def load_data(file_path):
     data = pd.read_csv(file_path, encoding='latin1')
     data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+    data = data.dropna(subset=['Date'])  # Remove rows with invalid dates
     return data
 
-data_path = './supermarket_sales.csv'  # Update path if necessary
+data_path = './supermarket_sales.csv'
 data = load_data(data_path)
-
-
 
 # Sidebar for Filters
 st.sidebar.header("Filters")
@@ -34,23 +32,51 @@ selected_date = st.sidebar.date_input(
     min_value=min_date,
     max_value=max_date
 )
+
+# Handle missing date input
+if not selected_date or len(selected_date) != 2:
+    st.warning("Please select a valid date range to view the dashboard.")
+    st.stop()
+
 # Filtered Data
-filtered_data = data[(data['Branch'].isin(selected_branch)) &
-                     (data['Product line'].isin(selected_product)) &
-                     (data['Customer type'].isin(selected_customer)) &
-                     (data['Date'] >= pd.to_datetime(selected_date[0])) &
-                     (data['Date'] <= pd.to_datetime(selected_date[1]))]
+filtered_data = data[
+    (data['Branch'].isin(selected_branch)) &
+    (data['Product line'].isin(selected_product)) &
+    (data['Customer type'].isin(selected_customer)) &
+    (data['Date'] >= pd.to_datetime(selected_date[0])) &
+    (data['Date'] <= pd.to_datetime(selected_date[1]))
+]
+
+if filtered_data.empty:
+    st.warning("No data available for the selected filters. Please adjust your selections.")
+    st.stop()
+
+# Round values
+filtered_data['Total'] = filtered_data['Total'].round(1)
+filtered_data['gross income'] = filtered_data['gross income'].round(1)
+filtered_data['Rating'] = filtered_data['Rating'].round(1)
+filtered_data['Quantity'] = filtered_data['Quantity'].astype(float).round(1)
+
 # Calculate Metrics
 total_sales = filtered_data['Total'].sum()
 gross_income = filtered_data['gross income'].sum()
 total_quantity = filtered_data['Quantity'].sum()
 avg_rating = filtered_data['Rating'].mean()
+
 sales_by_branch = filtered_data.groupby('Branch')['Total'].sum().reset_index()
 sales_by_product = filtered_data.groupby('Product line')['Total'].sum().reset_index()
 avg_rating_product = filtered_data.groupby('Product line')['Rating'].mean().reset_index()
 sales_by_customer = filtered_data.groupby('Customer type')['Total'].sum().reset_index()
 sales_by_payment = filtered_data.groupby('Payment')['Total'].sum().reset_index()
 sales_trend = filtered_data.groupby('Date')['Total'].sum().reset_index()
+
+# Round all chart values
+sales_by_branch['Total'] = sales_by_branch['Total'].round(1)
+sales_by_product['Total'] = sales_by_product['Total'].round(1)
+avg_rating_product['Rating'] = avg_rating_product['Rating'].round(1)
+sales_by_customer['Total'] = sales_by_customer['Total'].round(1)
+sales_by_payment['Total'] = sales_by_payment['Total'].round(1)
+sales_trend['Total'] = sales_trend['Total'].round(1)
 
 # Header
 st.markdown("""
@@ -71,17 +97,15 @@ st.markdown("""
 # Key Metrics
 st.markdown("### Key Metrics")
 col1, col2, col3, col4 = st.columns(4)
-
 with col1:
-    st.metric(label="Total Sales", value=f"${total_sales:,.2f}")
+    st.metric(label="Total Sales", value=f"${total_sales:,.1f}")
 with col2:
-    st.metric(label="Gross Income", value=f"${gross_income:,.2f}")
+    st.metric(label="Gross Income", value=f"${gross_income:,.1f}")
 with col3:
-    st.metric(label="Total Quantity", value=f"{total_quantity}")
+    st.metric(label="Total Quantity", value=f"{total_quantity:.1f}")
 with col4:
-    st.metric(label="Average Rating", value=f"{avg_rating:.2f}")
+    st.metric(label="Average Rating", value=f"{avg_rating:.1f}")
 
-# Visualizations
 # Sales by Branch
 st.markdown("### Sales by Branch")
 fig_branch_sales = px.bar(
@@ -122,9 +146,8 @@ fig_payment_sales = px.pie(
     values="Total", 
     title="Sales Distribution by Payment Method",
     color="Payment", 
-    color_discrete_sequence=px.colors.sequential.Purples  # Note the change to 'Purples'
+    color_discrete_sequence=px.colors.sequential.Purples
 )
-
 st.plotly_chart(fig_payment_sales, use_container_width=True)
 
 # Sales Trends
